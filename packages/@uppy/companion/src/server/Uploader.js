@@ -11,6 +11,7 @@ const { jsonStringify, hasMatch } = require('./helpers/utils')
 const logger = require('./logger')
 const headerSanitize = require('./header-blacklist')
 const redis = require('./redis')
+const UppyHttpStack = require('./httpStack')
 
 const DEFAULT_FIELD_NAME = 'files[]'
 const PROTOCOLS = Object.freeze({
@@ -422,6 +423,7 @@ class Uploader {
       uploadSize: this.bytesWritten,
       headers: headerSanitize(this.options.headers),
       addRequestId: true,
+      httpStack: new UppyHttpStack(),
       metadata: Object.assign(
         {
           // file name and type as required by the tusd tus server
