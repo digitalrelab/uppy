@@ -139,3 +139,38 @@ module.exports.decrypt = (encrypted, secret) => {
   decrypted += decipher.final('utf8')
   return decrypted
 }
+
+const delayFor = (time) => new Promise((resolve) => setTimeout(resolve, time))
+
+/**
+ * Retry action with delays in ms, onError called with error before retrying
+ *
+ * @param {{ action: () => Promise<any>, lastAction?: () => Promise<any>, retryDelays: number[], onError?: (err: Error) => void, errorIsRetryable?: (err: Error) => boolean }} options
+ */
+const retryWithDelay = (options) => {
+  const actionPromise = options.retryDelays.length === 0 && options.lastAction
+    ? options.lastAction()
+    : options.action()
+
+  return actionPromise
+    .catch((e) => {
+      if (options.errorIsRetryable && !options.errorIsRetryable(e)) {
+        throw e
+      }
+
+      if (options.retryDelays.length === 0) {
+        throw e
+      }
+
+      if (options.onError) {
+        options.onError(e)
+      }
+
+      const [delay, ...next] = options.retryDelays
+
+      return delayFor(delay)
+        .then(() => retryWithDelay({ ...options, retryDelays: next }))
+    })
+}
+
+module.exports.retryWithDelay = retryWithDelay

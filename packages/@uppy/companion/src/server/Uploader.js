@@ -57,8 +57,7 @@ class Uploader {
     this.uploadFileName = this.options.metadata.name || path.basename(this.path)
     this.streamsEnded = false
     this.uploadStopped = false
-    this.writeStream = fs.createWriteStream(this.path, { mode: 0o666 }) // no executable files
-      .on('error', (err) => logger.error(`${err}`, 'uploader.write.error', this.shortToken))
+
     /** @type {number} */
     this.emittedProgress = 0
     this.storage = options.storage
@@ -129,7 +128,7 @@ class Uploader {
    * the number of bytes written into the streams
    */
   get bytesWritten () {
-    return this.writeStream.bytesWritten
+    return this.writeStream ? this.writeStream.bytesWritten : 0
   }
 
   /**
@@ -230,11 +229,14 @@ class Uploader {
   }
 
   cleanUp () {
-    fs.unlink(this.path, (err) => {
-      if (err) {
-        logger.error(`cleanup failed for: ${this.path} err: ${err}`, 'uploader.cleanup.error')
-      }
-    })
+    this.endStreams()
+    if (this.writeStream) {
+      fs.unlink(this.path, (err) => {
+        if (err) {
+          logger.error(`cleanup failed for: ${this.path} err: ${err}`, 'uploader.cleanup.error')
+        }
+      })
+    }
     emitter().removeAllListeners(`pause:${this.token}`)
     emitter().removeAllListeners(`resume:${this.token}`)
     emitter().removeAllListeners(`cancel:${this.token}`)
@@ -257,6 +259,8 @@ class Uploader {
       this.cleanUp()
       return
     }
+
+    this.startWriteStream()
 
     // @todo a default protocol should not be set. We should ensure that the user specifies their protocol.
     const protocol = this.options.protocol || PROTOCOLS.multipart
@@ -297,8 +301,17 @@ class Uploader {
     })
   }
 
+  startWriteStream () {
+    if (!this.writeStream) {
+      this.writeStream = fs.createWriteStream(this.path, { mode: 0o666 }) // no executable files
+        .on('error', (err) => logger.error(`${err}`, 'uploader.write.error', this.shortToken))
+    }
+  }
+
   endStreams () {
-    this.writeStream.end()
+    if (this.writeStream) {
+      this.writeStream.end()
+    }
   }
 
   getResponse () {

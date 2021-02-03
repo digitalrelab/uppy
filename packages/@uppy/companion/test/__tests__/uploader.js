@@ -26,10 +26,9 @@ describe('uploader with tus protocol', () => {
     return new Promise((resolve) => {
       // validate that the test is resolved on socket connection
       uploader.onSocketReady(() => {
+        uploader.handleChunk(null, fileContent)
         const fileInfo = fs.statSync(uploader.path)
         expect(fileInfo.isFile()).toBe(true)
-        expect(fileInfo.size).toBe(0)
-        uploader.handleChunk(null, fileContent)
         uploader.handleChunk(null, null)
       })
 
