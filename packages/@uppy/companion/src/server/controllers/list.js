@@ -26,7 +26,7 @@ function list ({ query, params, companion }, res, next) {
   }
 
   retryWithDelay({
-    retryDelays: [5000, 10000, 15000, 20000],
+    retryDelays: [5000, 10000, 10000, 10000],
     action: getPerformList(false),
     lastAction: getPerformList(true),
     errorIsRetryable: (err) => !(err instanceof ProviderAuthError) || !err.isAuthError

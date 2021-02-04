@@ -97,6 +97,7 @@ function get (req, res, next) {
               // Otherwise clean up and try again
               uploader.cleanUp()
               uploader = new Uploader(Uploader.reqToOptions(req, size))
+              logger.error(`${err.constructor.name}, ${JSON.stringify(err)}`, 'controller.get.provider.download', req.id)
               logger.error(err, 'controller.get.provider.download', req.id)
               reject(err)
               return
