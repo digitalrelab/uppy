@@ -1,4 +1,4 @@
-const { errorToResponse } = require('../provider/error')
+const { errorToResponse, ProviderAuthError } = require('../provider/error')
 const { retryWithDelay } = require('../helpers/utils')
 
 function list ({ query, params, companion }, res, next) {
@@ -28,7 +28,8 @@ function list ({ query, params, companion }, res, next) {
   retryWithDelay({
     retryDelays: [5000, 10000, 15000, 20000],
     action: getPerformList(false),
-    lastAction: getPerformList(true)
+    lastAction: getPerformList(true),
+    errorIsRetryable: (err) => !(err instanceof ProviderAuthError) || !err.isAuthError
   })
 }
 
