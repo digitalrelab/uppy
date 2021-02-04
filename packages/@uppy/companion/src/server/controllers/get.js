@@ -28,7 +28,11 @@ const queue = (() => {
     async start () {
       while (stateForTenantId(this.tenantId).actions.length) {
         const action = stateForTenantId(this.tenantId).actions.shift()
-        await action()
+        try {
+          await action()
+        } catch (e) {
+          logger.error(e, 'controller.get.worker.start')
+        }
       }
       this.isDone = true
     }
@@ -93,6 +97,7 @@ function get (req, res, next) {
               // Otherwise clean up and try again
               uploader.cleanUp()
               uploader = new Uploader(Uploader.reqToOptions(req, size))
+              logger.error(err, 'controller.get.provider.download', req.id)
               reject(err)
               return
             }
