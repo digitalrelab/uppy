@@ -5,8 +5,6 @@ const { retryWithDelay } = require('../helpers/utils')
 
 const workerCount = process.env.COMPANION_WORKER_COUNT ? parseInt(process.env.COMPANION_WORKER_COUNT, 10) : 3
 
-const retryDelays = [5000, 10000, 15000, 30000, 60000, 120000]
-
 const queue = (() => {
   const state = {}
 
@@ -56,7 +54,7 @@ function get (req, res, next) {
   const tenantId = req.body.metadata && req.body.metadata.tenantId
 
   retryWithDelay({
-    retryDelays,
+    retryDelays: [5000, 10000],
     action: () => new Promise((resolve, reject) => provider.size({ id, token, query: req.query }, (err, size) => {
       if (err) {
         reject(err)
@@ -115,7 +113,7 @@ function get (req, res, next) {
       uploader.onSocketReady(() => {
         if (tenantId) {
           queue(tenantId, () => retryWithDelay({
-            retryDelays,
+            retryDelays: [5000, 10000, 15000, 30000, 60000, 120000],
             action: getPerformDownload(false),
             lastAction: getPerformDownload(true)
           }))

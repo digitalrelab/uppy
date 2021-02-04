@@ -18,6 +18,7 @@ const { getCredentialsResolver } = require('./credentials')
 const Provider = require('./Provider')
 // eslint-disable-next-line
 const SearchProvider = require('./SearchProvider')
+const { withCache } = require('./withCache')
 
 // leave here for now until Purest Providers gets updated with Zoom provider
 config.zoom = {
@@ -61,7 +62,8 @@ module.exports.getProviderMiddleware = (providers, needsProviderCredentials) => 
    */
   const middleware = (req, res, next, providerName) => {
     if (providers[providerName] && validOptions(req.companion.options)) {
-      req.companion.provider = new providers[providerName]({ providerName, config })
+      const provider = new providers[providerName]({ providerName, config })
+      req.companion.provider = provider instanceof Provider ? withCache(provider) : provider
       if (needsProviderCredentials) {
         req.companion.getProviderCredentials = getCredentialsResolver(providerName, req.companion.options, req)
       }
