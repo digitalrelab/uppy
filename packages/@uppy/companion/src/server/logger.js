@@ -77,6 +77,11 @@ const log = (msg, tag, level, id, color, shouldLogStackTrace) => {
   id = id || ''
   const whitespace = tag && id ? ' ' : ''
   color = color || ((message) => message)
+
+  if (level === 'debug' && process.env.NODE_ENV === 'production') {
+    return
+  }
+
   if (typeof msg === 'string') {
     msg = maskMessage(msg)
   } else if (msg && typeof msg.message === 'string') {

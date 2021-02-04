@@ -99,11 +99,11 @@ function get (req, res, next) {
               return
             }
 
+            uploader.handleChunk(err, data)
+
             if (data === null) {
               resolve()
             }
-
-            uploader.handleChunk(err, data)
           })
         })
       }
