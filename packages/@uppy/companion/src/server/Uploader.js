@@ -81,10 +81,6 @@ class Uploader {
 
       emitter().on(`cancel:${this.token}`, () => {
         this._paused = true
-        if (this.tus) {
-          const shouldTerminate = !!this.tus.url
-          this.tus.abort(shouldTerminate).catch(() => {})
-        }
         this.cleanUp()
       })
     }
@@ -230,11 +226,22 @@ class Uploader {
   }
 
   cleanUp (cb) {
+    if (this.uploadStopped) {
+      return
+    }
+
     this.endStreams()
     emitter().removeAllListeners(`pause:${this.token}`)
     emitter().removeAllListeners(`resume:${this.token}`)
     emitter().removeAllListeners(`cancel:${this.token}`)
     this.uploadStopped = true
+    if (this.tus) {
+      const shouldTerminate = !!this.tus.url
+      const abortPromise = this.tus.abort(shouldTerminate)
+      if (abortPromise) {
+        abortPromise.catch(() => {})
+      }
+    }
     if (this.writeStream) {
       fs.unlink(this.path, (err) => {
         if (err) {
@@ -244,7 +251,7 @@ class Uploader {
           cb(err)
         }
       })
-    } else {
+    } else if (cb) {
       cb()
     }
   }
@@ -427,20 +434,24 @@ class Uploader {
     emitter().emit(this.token, dataToEmit)
   }
 
+  uploadTus () {
+    fs.access(this.path, fs.constants.F_OK, (err) => {
+      if (err) {
+        logger.error(err, 'uploader.tus.error')
+        this.emitError(err)
+        this.cleanUp()
+        return
+      }
+
+      this._uploadTus()
+    })
+  }
+
   /**
    * start the tus upload
    */
-  uploadTus () {
-    let file
-    try {
-      file = fs.createReadStream(this.path)
-    } catch (err) {
-      logger.error(err, 'uploader.tus.error')
-      this.emitError(err)
-      this.cleanUp()
-      return
-    }
-    const uploader = this
+  _uploadTus () {
+    const file = fs.createReadStream(this.path)
 
     this.tus = new tus.Upload(file, {
       endpoint: this.options.endpoint,
@@ -463,7 +474,7 @@ class Uploader {
        *
        * @param {Error} error
        */
-      onError (error) {
+      onError: (error) => {
         logger.error(error, 'uploader.tus.error')
         // deleting tus originalRequest field because it uses the same http-agent
         // as companion, and this agent may contain sensitive request details (e.g headers)
@@ -473,20 +484,20 @@ class Uploader {
         delete error.originalRequest
         // @ts-ignore
         delete error.originalResponse
-        uploader.emitError(error)
-        uploader.cleanUp()
+        this.emitError(error)
+        this.cleanUp()
       },
       /**
        *
        * @param {number} bytesUploaded
        * @param {number} bytesTotal
        */
-      onProgress (bytesUploaded, bytesTotal) {
-        uploader.emitIllusiveProgress(bytesUploaded)
+      onProgress: (bytesUploaded, bytesTotal) => {
+        this.emitIllusiveProgress(bytesUploaded)
       },
-      onSuccess () {
-        uploader.emitSuccess(uploader.tus.url)
-        uploader.cleanUp()
+      onSuccess: () => {
+        this.emitSuccess(this.tus.url)
+        this.cleanUp()
       }
     })
 

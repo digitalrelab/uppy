@@ -91,12 +91,26 @@ function get (req, res, next) {
           const uploadHandler = (data) => {
             if (data.action === 'success') {
               finish()
+              return
             }
-            // Tus handles its own retries, error will be sent to client so resolve
+
             if (data.action === 'error') {
-              finish()
+              if (isLast) {
+                finish()
+                return
+              }
+              retry(Object.assign(new Error(), data.payload.error))
             }
           }
+
+          const retry = (err) => uploader.cleanUp(() => {
+            uploader = new Uploader({
+              ...Uploader.reqToOptions(req, size),
+              token: uploader.token
+            })
+            logger.error(err, 'controller.get.retry', req.id)
+            finish(err)
+          })
 
           const finish = (err) => {
             emitter().removeListener(uploader.token, uploadHandler)
@@ -104,6 +118,7 @@ function get (req, res, next) {
               reject(err)
               return
             }
+            console.log('finish')
             resolve()
           }
 
@@ -117,14 +132,7 @@ function get (req, res, next) {
                 return
               }
               // Otherwise clean up and try again
-              uploader.cleanUp(() => {
-                uploader = new Uploader({
-                  ...Uploader.reqToOptions(req, size),
-                  token: uploader.token
-                })
-                logger.error(err, 'controller.get.provider.download.retry', req.id)
-                reject(err)
-              })
+              retry()
               return
             }
 
@@ -140,7 +148,7 @@ function get (req, res, next) {
       uploader.onSocketReady(() => {
         if (tenantId) {
           queue(tenantId, () => retryWithDelay({
-            retryDelays: [5000, 10000, 15000, 30000, 60000, 120000],
+            retryDelays: process.env.NODE_ENV === 'test' ? [] : [5000, 10000, 15000, 30000, 60000, 120000],
             action: getPerformDownload(false),
             lastAction: getPerformDownload(true)
           }))
