@@ -2,6 +2,7 @@ const Uploader = require('../Uploader')
 const logger = require('../logger')
 const { errorToResponse } = require('../provider/error')
 const { retryWithDelay } = require('../helpers/utils')
+const emitter = require('../emitter')
 
 const workerCount = process.env.COMPANION_WORKER_COUNT ? parseInt(process.env.COMPANION_WORKER_COUNT, 10) : 3
 
@@ -86,27 +87,48 @@ function get (req, res, next) {
       const getPerformDownload = (isLast) => () => {
         return new Promise((resolve, reject) => {
           logger.debug('Starting remote download.', null, req.id)
+
+          const uploadHandler = (data) => {
+            if (data.action === 'success') {
+              finish()
+            }
+            // Tus handles its own retries, error will be sent to client so resolve
+            if (data.action === 'error') {
+              finish()
+            }
+          }
+
+          const finish = (err) => {
+            emitter().removeListener(uploader.token, uploadHandler)
+            if (err) {
+              reject(err)
+              return
+            }
+            resolve()
+          }
+
+          emitter().on(uploader.token, uploadHandler)
+
           provider.download({ id, token, query: req.query }, (err, data) => {
             if (err) {
               if (isLast) {
-                // Send error to client if last retry
+                // Send error to client if last retry (will be resolved by above handler)
                 uploader.handleChunk(err, data)
-                resolve()
                 return
               }
               // Otherwise clean up and try again
-              uploader.cleanUp()
-              uploader = new Uploader(Uploader.reqToOptions(req, size))
-              logger.error(err, 'controller.get.provider.download.retry', req.id)
-              reject(err)
+              uploader.cleanUp(() => {
+                uploader = new Uploader({
+                  ...Uploader.reqToOptions(req, size),
+                  token: uploader.token
+                })
+                logger.error(err, 'controller.get.provider.download.retry', req.id)
+                reject(err)
+              })
               return
             }
 
             uploader.handleChunk(err, data)
-
-            if (data === null) {
-              resolve()
-            }
           })
         })
       }

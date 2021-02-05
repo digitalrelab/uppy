@@ -23,7 +23,7 @@ module.exports.withCache = (provider) => {
       }
 
       for (const item of data.items) {
-        if (item.size == null || item.id == null) {
+        if (!item.size || item.id == null) {
           continue
         }
         addToCache(sizeKey(providerName, item.id), item.size)
@@ -38,6 +38,7 @@ module.exports.withCache = (provider) => {
     const cached = getFromCache(key)
     if (cached) {
       cb(null, cached)
+      return
     }
 
     size(options, (err, size) => {

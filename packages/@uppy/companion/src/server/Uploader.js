@@ -40,6 +40,7 @@ class Uploader {
    * @property {any=} headers
    * @property {string=} httpMethod
    * @property {boolean=} useFormData
+   * @property {string=} token
    *
    * @param {UploaderOptions} options
    */
@@ -50,7 +51,7 @@ class Uploader {
     }
 
     this.options = options
-    this.token = uuid.v4()
+    this.token = this.options.token || uuid.v4()
     this.path = `${this.options.pathPrefix}/${Uploader.FILE_NAME_PREFIX}-${this.token}`
     this.options.metadata = this.options.metadata || {}
     this.options.fieldname = this.options.fieldname || DEFAULT_FIELD_NAME
@@ -228,19 +229,24 @@ class Uploader {
     logger.debug('waiting for connection', 'uploader.socket.wait', this.shortToken)
   }
 
-  cleanUp () {
+  cleanUp (cb) {
     this.endStreams()
+    emitter().removeAllListeners(`pause:${this.token}`)
+    emitter().removeAllListeners(`resume:${this.token}`)
+    emitter().removeAllListeners(`cancel:${this.token}`)
+    this.uploadStopped = true
     if (this.writeStream) {
       fs.unlink(this.path, (err) => {
         if (err) {
           logger.error(`cleanup failed for: ${this.path} err: ${err}`, 'uploader.cleanup.error')
         }
+        if (cb) {
+          cb(err)
+        }
       })
+    } else {
+      cb()
     }
-    emitter().removeAllListeners(`pause:${this.token}`)
-    emitter().removeAllListeners(`resume:${this.token}`)
-    emitter().removeAllListeners(`cancel:${this.token}`)
-    this.uploadStopped = true
   }
 
   /**
@@ -425,7 +431,15 @@ class Uploader {
    * start the tus upload
    */
   uploadTus () {
-    const file = fs.createReadStream(this.path)
+    let file
+    try {
+      file = fs.createReadStream(this.path)
+    } catch (err) {
+      logger.error(err, 'uploader.tus.error')
+      this.emitError(err)
+      this.cleanUp()
+      return
+    }
     const uploader = this
 
     this.tus = new tus.Upload(file, {
@@ -460,6 +474,7 @@ class Uploader {
         // @ts-ignore
         delete error.originalResponse
         uploader.emitError(error)
+        uploader.cleanUp()
       },
       /**
        *
