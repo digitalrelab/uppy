@@ -9,26 +9,26 @@ const workerCount = process.env.COMPANION_WORKER_COUNT ? parseInt(process.env.CO
 const queue = (() => {
   const state = {}
 
-  const stateForTenantId = (tenantId) => {
-    if (!state[tenantId]) {
-      state[tenantId] = {
+  const stateForKey = (key) => {
+    if (!state[key]) {
+      state[key] = {
         actions: [],
         workers: []
       }
     }
 
-    return state[tenantId]
+    return state[key]
   }
 
   class Worker {
-    constructor (tenantId) {
-      this.tenantId = tenantId
+    constructor (key) {
+      this.key = key
       this.isDone = false
     }
 
     async start () {
-      while (stateForTenantId(this.tenantId).actions.length) {
-        const action = stateForTenantId(this.tenantId).actions.shift()
+      while (stateForKey(this.key).actions.length) {
+        const action = stateForKey(this.key).actions.shift()
         try {
           await action()
         } catch (e) {
@@ -39,12 +39,12 @@ const queue = (() => {
     }
   }
 
-  return (tenantId, action) => {
-    const state = stateForTenantId(tenantId)
+  return (key, action) => {
+    const state = stateForKey(key)
     state.actions.push(action)
     state.workers = state.workers.filter((worker) => !worker.isDone)
     while (state.workers.length < workerCount) {
-      const worker = new Worker(tenantId)
+      const worker = new Worker(key)
       worker.start()
       state.workers.push(worker)
     }
@@ -55,8 +55,6 @@ function get (req, res, next) {
   const id = req.params.id
   const token = req.companion.providerToken
   const provider = req.companion.provider
-
-  const tenantId = req.body.metadata && req.body.metadata.tenantId
 
   retryWithDelay({
     retryDelays: [5000, 10000],
@@ -146,8 +144,8 @@ function get (req, res, next) {
       logger.debug('Waiting for socket connection before beginning remote download.', null, req.id)
       // waiting for socketReady.
       uploader.onSocketReady(() => {
-        if (tenantId) {
-          queue(tenantId, () => retryWithDelay({
+        if (token) {
+          queue(token, () => retryWithDelay({
             retryDelays: process.env.NODE_ENV === 'test' ? [] : [5000, 10000, 15000, 30000, 60000, 120000],
             action: getPerformDownload(false),
             lastAction: getPerformDownload(true)
