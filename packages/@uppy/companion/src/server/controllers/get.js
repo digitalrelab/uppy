@@ -130,7 +130,7 @@ function get (req, res, next) {
                 return
               }
               // Otherwise clean up and try again
-              retry()
+              retry(err)
               return
             }
 
