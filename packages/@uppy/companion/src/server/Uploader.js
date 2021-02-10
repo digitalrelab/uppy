@@ -288,9 +288,10 @@ class Uploader {
       this.inputStream.push(chunk)
       this._pushToStream = false
     } else {
-      this._buffer = Buffer.concat([this._buffer, Buffer.from(chunk)])
-      if (chunk === null) {
+      if (chunk == null) {
         this._downloadComplete = true
+      } else {
+        this._buffer = Buffer.concat([this._buffer, Buffer.from(chunk)])
       }
     }
   }
@@ -321,6 +322,7 @@ class Uploader {
       transform: (chunk, encoding, callback) => {
         if (!chunk) {
           callback(null, chunk)
+          return
         }
 
         if (typeof chunk === 'string') {
