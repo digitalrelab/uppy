@@ -222,10 +222,12 @@ class Uploader {
 
   cancel () {
     this._paused = true
-    const shouldTerminate = !!this.tus.url
-    const abortPromise = this.tus.abort(shouldTerminate)
-    if (abortPromise) {
-      abortPromise.catch(() => {})
+    if (this.tus) {
+      const shouldTerminate = !!this.tus.url
+      const abortPromise = this.tus.abort(shouldTerminate)
+      if (abortPromise) {
+        abortPromise.catch(() => {})
+      }
     }
     this.cleanUp()
   }
