@@ -2,7 +2,6 @@
 
 jest.mock('tus-js-client')
 
-const fs = require('fs')
 const Uploader = require('../../src/server/Uploader')
 const socketClient = require('../mocksocket')
 const { companionOptions } = require('../../src/standalone')
@@ -27,36 +26,22 @@ describe('uploader with tus protocol', () => {
       // validate that the test is resolved on socket connection
       uploader.onSocketReady(() => {
         uploader.handleChunk(null, fileContent)
-        fs.stat(uploader.path, (err, fileInfo) => {
-          if (err) {
-            expect(err).toBeFalsy()
-          }
-          expect(fileInfo.isFile()).toBe(true)
-          uploader.handleChunk(null, null)
-        })
+        setTimeout(() => {
+          expect(uploader.bytesWritten).toBeGreaterThan(0)
+        }, 100)
       })
 
       let progressReceived = 0
       // emulate socket connection
       socketClient.connect(uploadToken)
       socketClient.onProgress(uploadToken, (message) => {
-        // validate that the file has been downloaded and saved into the file path
-        const fileInfo = fs.statSync(uploader.path)
-        expect(fileInfo.isFile()).toBe(true)
-        expect(fileInfo.size).toBe(fileContent.length)
-
         progressReceived = message.payload.bytesUploaded
-        expect(message.payload.bytesTotal).toBe(fileContent.length)
       })
       socketClient.onUploadSuccess(uploadToken, (message) => {
         expect(progressReceived).toBe(fileContent.length)
         // see __mocks__/tus-js-client.js
         expect(message.payload.url).toBe('https://tus.endpoint/files/foo-bar')
-        setTimeout(() => {
-          // check that file has been cleaned up
-          expect(fs.existsSync(uploader.path)).toBe(false)
-          resolve()
-        }, 100)
+        resolve()
       })
     })
   })

@@ -101,14 +101,15 @@ function get (req, res, next) {
             }
           }
 
-          const retry = (err) => uploader.cleanUp(() => {
+          const retry = (err) => {
+            uploader.cancel()
             uploader = new Uploader({
               ...Uploader.reqToOptions(req, size),
               token: uploader.token
             })
             logger.error(err, 'controller.get.retry', req.id)
             finish(err)
-          })
+          }
 
           const finish = (err) => {
             emitter().removeListener(uploader.token, uploadHandler)
