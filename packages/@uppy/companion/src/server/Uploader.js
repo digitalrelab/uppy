@@ -10,7 +10,7 @@ const logger = require('./logger')
 const headerSanitize = require('./header-blacklist')
 const redis = require('./redis')
 const UppyHttpStack = require('./httpStack')
-const { Readable, Transform } = require('stream')
+const { Readable } = require('stream')
 
 const DEFAULT_FIELD_NAME = 'files[]'
 const PROTOCOLS = Object.freeze({
@@ -64,7 +64,7 @@ class Uploader {
     this._paused = false
 
     this._pushToStream = false
-    this._buffer = Buffer.alloc(0)
+    this._buffers = []
     this._downloadComplete = false
 
     if (this.options.protocol === PROTOCOLS.tus) {
@@ -257,8 +257,8 @@ class Uploader {
       logger.error(err, 'uploader.download.error', this.shortToken)
       this.emitError(err)
       this.cleanUp()
-      if (this.inputStream) {
-        this.inputStream.destroy(err)
+      if (this.fileStream) {
+        this.fileStream.destroy(err)
       }
       return
     }
@@ -287,61 +287,49 @@ class Uploader {
     }
 
     if (this._pushToStream) {
-      this._pushToStream = this.inputStream.push(chunk)
+      this.bytesWritten += Buffer.from(chunk).length
+      this._pushToStream = this.fileStream.push(chunk)
     } else {
       if (chunk == null) {
         this._downloadComplete = true
       } else {
-        this._buffer = Buffer.concat([this._buffer, Buffer.from(chunk)])
+        this._buffers.push(Buffer.from(chunk))
       }
     }
   }
 
   startUpload () {
-    if (this.inputStream) {
+    if (this.fileStream) {
       return
     }
 
-    this.inputStream = new Readable({
+    this.fileStream = new Readable({
       read: () => {
-        if (this._buffer.length === 0) {
-          if (this._downloadComplete) {
-            this.inputStream.push(null)
-          }
-
+        if (this._buffers.length === 0) {
           this._pushToStream = true
           return
         }
 
-        this._pushToStream = this.inputStream.push(this._buffer)
-        this._buffer = Buffer.alloc(0)
+        this._pushToStream = true
+        while (this._buffers.length && this._pushToStream) {
+          const chunk = this._buffers.shift()
+          this.bytesWritten += chunk.length
+          this._pushToStream = this.fileStream.push(chunk)
+        }
+
+        if (this._downloadComplete) {
+          this.fileStream.push(null)
+        }
       }
     })
-    this.fileStream = this.inputStream.pipe(new Transform({
-      allowHalfOpen: false,
-      transform: (chunk, encoding, callback) => {
-        if (!chunk) {
-          callback(null, chunk)
-          return
-        }
-
-        if (typeof chunk === 'string') {
-          this.bytesWritten += Buffer.from(chunk).length
-        } else {
-          this.bytesWritten += chunk.length
-        }
-
-        callback(null, chunk)
-      }
-    }))
   }
 
   get streamsEnded () {
-    if (!this.inputStream) {
+    if (!this.fileStream) {
       return false
     }
 
-    return this.inputStream.destroyed
+    return this.fileStream.destroyed
   }
 
   getResponse () {
@@ -431,7 +419,7 @@ class Uploader {
       endpoint: this.options.endpoint,
       uploadUrl: this.options.uploadUrl,
       uploadLengthDeferred: true,
-      retryDelays: [0, 1000, 3000, 5000],
+      retryDelays: null,
       uploadSize: this.options.size,
       chunkSize: 50 * 1024 * 1024,
       headers: headerSanitize(this.options.headers),

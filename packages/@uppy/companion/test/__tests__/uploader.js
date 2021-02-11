@@ -26,9 +26,7 @@ describe('uploader with tus protocol', () => {
       // validate that the test is resolved on socket connection
       uploader.onSocketReady(() => {
         uploader.handleChunk(null, fileContent)
-        setTimeout(() => {
-          expect(uploader.bytesWritten).toBeGreaterThan(0)
-        }, 100)
+        uploader.handleChunk(null, null)
       })
 
       let progressReceived = 0

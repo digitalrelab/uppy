@@ -117,7 +117,6 @@ function get (req, res, next) {
               reject(err)
               return
             }
-            console.log('finish')
             resolve()
           }
 
