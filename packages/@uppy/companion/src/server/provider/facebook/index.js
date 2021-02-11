@@ -74,33 +74,34 @@ class Facebook extends Provider {
     return sortedImages[sortedImages.length - 1].source
   }
 
-  download ({ id, token }, onData) {
-    return this.client
-      .get(`https://graph.facebook.com/${id}`)
-      .qs({ fields: 'images' })
-      .auth(token)
-      .request((err, resp, body) => {
-        if (err || resp.statusCode !== 200) {
-          err = this._error(err, resp)
-          logger.error(err, 'provider.facebook.download.error')
-          onData(err)
-          return
-        }
+  download ({ id, token }) {
+    return new Promise((resolve, reject) => {
+      this.client
+        .get(`https://graph.facebook.com/${id}`)
+        .qs({ fields: 'images' })
+        .auth(token)
+        .request((err, resp, body) => {
+          if (err || resp.statusCode !== 200) {
+            err = this._error(err, resp)
+            logger.error(err, 'provider.facebook.download.error')
+            reject(err)
+            return
+          }
 
-        request(this._getMediaUrl(body))
-          .on('response', (resp) => {
-            if (resp.statusCode !== 200) {
-              onData(this._error(null, resp))
-            } else {
-              resp.on('data', (chunk) => onData(null, chunk))
-            }
-          })
-          .on('end', () => onData(null, null))
-          .on('error', (err) => {
-            logger.error(err, 'provider.facebook.download.url.error')
-            onData(err)
-          })
-      })
+          request(this._getMediaUrl(body))
+            .on('error', (err) => {
+              logger.error(err, 'provider.facebook.download.url.error')
+              reject(err)
+            })
+            .on('response', (resp) => {
+              if (resp.statusCode !== 200) {
+                reject(this._error(null, resp))
+              } else {
+                resolve(resp)
+              }
+            })
+        })
+    })
   }
 
   thumbnail (_, done) {

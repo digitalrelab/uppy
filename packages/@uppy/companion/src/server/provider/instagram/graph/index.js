@@ -70,33 +70,34 @@ class Instagram extends Provider {
       })
   }
 
-  download ({ id, token }, onData) {
-    return this.client
-      .get(`https://graph.instagram.com/${id}`)
-      .qs({ fields: 'media_url' })
-      .auth(token)
-      .request((err, resp, body) => {
-        if (err || resp.statusCode !== 200) {
-          err = this._error(err, resp)
-          logger.error(err, 'provider.instagram.download.error')
-          onData(err)
-          return
-        }
+  download ({ id, token }) {
+    return new Promise((resolve, reject) => {
+      this.client
+        .get(`https://graph.instagram.com/${id}`)
+        .qs({ fields: 'media_url' })
+        .auth(token)
+        .request((err, resp, body) => {
+          if (err || resp.statusCode !== 200) {
+            err = this._error(err, resp)
+            logger.error(err, 'provider.instagram.download.error')
+            reject(err)
+            return
+          }
 
-        request(body.media_url)
-          .on('response', (resp) => {
-            if (resp.statusCode !== 200) {
-              onData(this._error(null, resp))
-            } else {
-              resp.on('data', (chunk) => onData(null, chunk))
-            }
-          })
-          .on('end', () => onData(null, null))
-          .on('error', (err) => {
-            logger.error(err, 'provider.instagram.download.url.error')
-            onData(err)
-          })
-      })
+          request(body.media_url)
+            .on('error', (err) => {
+              logger.error(err, 'provider.instagram.download.url.error')
+              reject(err)
+            })
+            .on('response', (resp) => {
+              if (resp.statusCode !== 200) {
+                reject(this._error(null, resp))
+              } else {
+                resolve(resp)
+              }
+            })
+        })
+    })
   }
 
   thumbnail (_, done) {

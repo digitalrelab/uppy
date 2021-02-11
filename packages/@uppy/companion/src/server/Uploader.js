@@ -10,7 +10,6 @@ const logger = require('./logger')
 const headerSanitize = require('./header-blacklist')
 const redis = require('./redis')
 const UppyHttpStack = require('./httpStack')
-const { Readable } = require('stream')
 
 const DEFAULT_FIELD_NAME = 'files[]'
 const PROTOCOLS = Object.freeze({
@@ -55,7 +54,6 @@ class Uploader {
     this.options.fieldname = this.options.fieldname || DEFAULT_FIELD_NAME
     this.uploadFileName = this.options.metadata.name || `${Uploader.FILE_NAME_PREFIX}-${this.token}`
     this.uploadStopped = false
-    this.bytesWritten = 0
     this.multipartStarted = false
 
     /** @type {number} */
@@ -243,93 +241,25 @@ class Uploader {
     this.uploadStopped = true
   }
 
-  /**
-   *
-   * @param {Error} err
-   * @param {string | Buffer | Buffer[]} chunk
-   */
-  handleChunk (err, chunk) {
-    if (this.uploadStopped || this.streamsEnded) {
-      return
-    }
-
-    if (err) {
-      logger.error(err, 'uploader.download.error', this.shortToken)
-      this.emitError(err)
-      this.cleanUp()
-      if (this.fileStream) {
-        this.fileStream.destroy(err)
-      }
-      return
-    }
-
-    // @todo a default protocol should not be set. We should ensure that the user specifies their protocol.
+  upload (stream) {
     const protocol = this.options.protocol || PROTOCOLS.multipart
-
-    this.startUpload()
-
     switch (protocol) {
       case PROTOCOLS.multipart:
         if (!this.multipartStarted && this.options.endpoint) {
-          this.uploadMultipart()
+          this.uploadMultipart(stream)
         }
         break
       case PROTOCOLS.s3Multipart:
         if (!this.s3Upload) {
-          this.uploadS3Multipart()
+          this.uploadS3Multipart(stream)
         }
         break
       case PROTOCOLS.tus:
         if (!this.tus) {
-          this.uploadTus()
+          this.uploadTus(stream)
         }
         break
     }
-
-    if (this._pushToStream) {
-      this.bytesWritten += Buffer.from(chunk).length
-      this._pushToStream = this.fileStream.push(chunk)
-    } else {
-      if (chunk == null) {
-        this._downloadComplete = true
-      } else {
-        this._buffers.push(Buffer.from(chunk))
-      }
-    }
-  }
-
-  startUpload () {
-    if (this.fileStream) {
-      return
-    }
-
-    this.fileStream = new Readable({
-      read: () => {
-        if (this._buffers.length === 0) {
-          this._pushToStream = true
-          return
-        }
-
-        this._pushToStream = true
-        while (this._buffers.length && this._pushToStream) {
-          const chunk = this._buffers.shift()
-          this.bytesWritten += chunk.length
-          this._pushToStream = this.fileStream.push(chunk)
-        }
-
-        if (this._downloadComplete) {
-          this.fileStream.push(null)
-        }
-      }
-    })
-  }
-
-  get streamsEnded () {
-    if (!this.fileStream) {
-      return false
-    }
-
-    return this.fileStream.destroyed
   }
 
   getResponse () {
@@ -355,9 +285,9 @@ class Uploader {
    */
   emitProgress (bytesUploaded, bytesTotal) {
     bytesTotal = bytesTotal || this.options.size
-    if (this.tus && this.tus.options.uploadLengthDeferred && this.streamsEnded) {
-      bytesTotal = this.bytesWritten
-    }
+    // if (this.tus && this.tus.options.uploadLengthDeferred) {
+    // bytesTotal = this.bytesWritten
+    // }
     const percentage = (bytesUploaded / bytesTotal * 100)
     const formatPercentage = percentage.toFixed(2)
     logger.debug(
@@ -414,8 +344,8 @@ class Uploader {
   /**
    * start the tus upload
    */
-  uploadTus () {
-    this.tus = new tus.Upload(this.fileStream, {
+  uploadTus (stream) {
+    this.tus = new tus.Upload(stream, {
       endpoint: this.options.endpoint,
       uploadUrl: this.options.uploadUrl,
       uploadLengthDeferred: true,
@@ -469,12 +399,12 @@ class Uploader {
     }
   }
 
-  uploadMultipart () {
+  uploadMultipart (stream) {
     this.multipartStarted = true
 
     // upload progress
     let bytesUploaded = 0
-    this.fileStream.on('data', (data) => {
+    stream.on('data', (data) => {
       bytesUploaded += data.length
       this.emitProgress(bytesUploaded, this.options.size)
     })
@@ -489,7 +419,7 @@ class Uploader {
         this.options.metadata,
         {
           [this.options.fieldname]: {
-            value: this.fileStream,
+            value: stream,
             options: {
               filename: this.uploadFileName,
               contentType: this.options.metadata.type
@@ -503,7 +433,7 @@ class Uploader {
       })
     } else {
       reqOptions.headers['content-length'] = this.options.size
-      reqOptions.body = this.fileStream
+      reqOptions.body = stream
       httpRequest(reqOptions, (error, response, body) => {
         this._onMultipartComplete(error, response, body, bytesUploaded)
       })
@@ -531,8 +461,8 @@ class Uploader {
     if (response.statusCode >= 400) {
       logger.error(`upload failed with status: ${response.statusCode}`, 'upload.multipart.error')
       this.emitError(new Error(response.statusMessage), respObj)
-    } else if (bytesUploaded !== this.bytesWritten && bytesUploaded !== this.options.size) {
-      const errMsg = `uploaded only ${bytesUploaded} of ${this.bytesWritten} with status: ${response.statusCode}`
+    } else if (bytesUploaded !== this.options.size) {
+      const errMsg = `uploaded only ${bytesUploaded} of ${this.options.size} with status: ${response.statusCode}`
       logger.error(errMsg, 'upload.multipart.mismatch.error')
       this.emitError(new Error(errMsg))
     } else {
@@ -543,16 +473,9 @@ class Uploader {
   }
 
   /**
-   * Upload the file to S3 using a Multipart upload.
-   */
-  uploadS3Multipart () {
-    return this._uploadS3MultipartStream(this.fileStream)
-  }
-
-  /**
    * Upload a stream to S3.
    */
-  _uploadS3MultipartStream (stream) {
+  uploadS3Multipart (stream) {
     if (!this.options.s3) {
       this.emitError(new Error('The S3 client is not configured on this companion instance.'))
       return

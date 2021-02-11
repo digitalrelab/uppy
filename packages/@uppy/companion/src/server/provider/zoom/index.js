@@ -99,7 +99,7 @@ class Zoom extends Provider {
       .request(done)
   }
 
-  download ({ id, token, query }, done) {
+  download ({ id, token, query }) {
     // meeting id + file id required
     // cc files don't have an ID or size
     const meetingId = id
@@ -107,42 +107,41 @@ class Zoom extends Provider {
     const recordingStart = query.recordingStart
     const GET_MEETING_FILES = `/meetings/${encodeURIComponent(meetingId)}/recordings`
 
-    const downloadUrlPromise = new Promise((resolve) => {
+    const downloadUrlPromise = new Promise((resolve, reject) => {
       this.client
         .get(`${BASE_URL}${GET_MEETING_FILES}`)
         .auth(token)
         .request((err, resp) => {
           if (err || resp.statusCode !== 200) {
-            return this._downloadError(resp, done)
+            return this._downloadError(resp, reject)
           }
           const file = resp
             .body
             .recording_files
             .find(file => fileId === file.id || (file.file_type === fileId && file.recording_start === recordingStart))
           if (!file || !file.download_url) {
-            return this._downloadError(resp, done)
+            return this._downloadError(resp, reject)
           }
           resolve(file.download_url)
         })
     })
-    downloadUrlPromise.then((downloadUrl) => {
-      this.client
-        .get(`${downloadUrl}?access_token=${token}`)
-        .request()
-        .on('response', (resp) => {
-          if (resp.statusCode !== 200) {
-            done(this._error(null, resp))
-          } else {
-            resp.on('data', (chunk) => done(null, chunk))
-          }
-        })
-        .on('end', () => {
-          done(null, null)
-        })
-        .on('error', (err) => {
-          logger.error(err, 'provider.zoom.download.error')
-          done(err)
-        })
+    return downloadUrlPromise.then((downloadUrl) => {
+      return new Promise((resolve, reject) => {
+        this.client
+          .get(`${downloadUrl}?access_token=${token}`)
+          .request()
+          .on('error', (err) => {
+            logger.error(err, 'provider.zoom.download.error')
+            reject(err)
+          })
+          .on('response', (resp) => {
+            if (resp.statusCode !== 200) {
+              reject(this._error(null, resp))
+            } else {
+              resolve(resp)
+            }
+          })
+      })
     })
   }
 

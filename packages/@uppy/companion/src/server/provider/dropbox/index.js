@@ -117,29 +117,30 @@ class DropBox extends Provider {
       .request(done)
   }
 
-  download ({ id, token }, onData) {
-    return this.client
-      .post('https://content.dropboxapi.com/2/files/download')
-      .options({
-        version: '2',
-        headers: {
-          'Dropbox-API-Arg': httpHeaderSafeJson({ path: `${id}` })
-        }
-      })
-      .auth(token)
-      .request()
-      .on('response', (resp) => {
-        if (resp.statusCode !== 200) {
-          onData(this._error(null, resp))
-        } else {
-          resp.on('data', (chunk) => onData(null, chunk))
-        }
-      })
-      .on('end', () => onData(null, null))
-      .on('error', (err) => {
-        logger.error(err, 'provider.dropbox.download.error')
-        onData(err)
-      })
+  download ({ id, token }) {
+    return new Promise((resolve, reject) => {
+      this.client
+        .post('https://content.dropboxapi.com/2/files/download')
+        .options({
+          version: '2',
+          headers: {
+            'Dropbox-API-Arg': httpHeaderSafeJson({ path: `${id}` })
+          }
+        })
+        .auth(token)
+        .request()
+        .on('error', (err) => {
+          logger.error(err, 'provider.dropbox.download.error')
+          reject(err)
+        })
+        .on('response', (resp) => {
+          if (resp.statusCode !== 200) {
+            reject(this._error(null, resp))
+          } else {
+            resolve(resp)
+          }
+        })
+    })
   }
 
   thumbnail ({ id, token }, done) {

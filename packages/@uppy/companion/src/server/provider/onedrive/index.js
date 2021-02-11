@@ -64,24 +64,25 @@ class OneDrive extends Provider {
       })
   }
 
-  download ({ id, token, query }, onData) {
+  download ({ id, token, query }) {
     const rootPath = query.driveId ? `/drives/${query.driveId}` : '/me/drive'
-    return this.client
-      .get(`${rootPath}/items/${id}/content`)
-      .auth(token)
-      .request()
-      .on('response', (resp) => {
-        if (resp.statusCode !== 200) {
-          onData(this._error(null, resp))
-        } else {
-          resp.on('data', (chunk) => onData(null, chunk))
-        }
-      })
-      .on('end', () => onData(null, null))
-      .on('error', (err) => {
-        logger.error(err, 'provider.onedrive.download.error')
-        onData(err)
-      })
+    return new Promise((resolve, reject) => {
+      this.client
+        .get(`${rootPath}/items/${id}/content`)
+        .auth(token)
+        .request()
+        .on('error', (err) => {
+          logger.error(err, 'provider.onedrive.download.error')
+          reject(err)
+        })
+        .on('response', (resp) => {
+          if (resp.statusCode !== 200) {
+            reject(this._error(null, resp))
+          } else {
+            resolve(resp)
+          }
+        })
+    })
   }
 
   thumbnail (_, done) {

@@ -64,23 +64,24 @@ class Box extends Provider {
       })
   }
 
-  download ({ id, token }, onData) {
-    return this.client
-      .get(`files/${id}/content`)
-      .auth(token)
-      .request()
-      .on('response', (resp) => {
-        if (resp.statusCode !== 200) {
-          onData(this._error(null, resp))
-        } else {
-          resp.on('data', (chunk) => onData(null, chunk))
-        }
-      })
-      .on('end', () => onData(null, null))
-      .on('error', (err) => {
-        logger.error(err, 'provider.box.download.error')
-        onData(err)
-      })
+  download ({ id, token }) {
+    return new Promise((resolve, reject) => {
+      this.client
+        .get(`files/${id}/content`)
+        .auth(token)
+        .request()
+        .on('error', (err) => {
+          logger.error(err, 'provider.box.download.error')
+          reject(err)
+        })
+        .on('response', (resp) => {
+          if (resp.statusCode !== 200) {
+            reject(this._error(null, resp))
+          } else {
+            resolve(resp)
+          }
+        })
+    })
   }
 
   thumbnail ({ id, token }, done) {

@@ -127,44 +127,45 @@ class Drive extends Provider {
     })
   }
 
-  download ({ id, token }, onData) {
-    this.stats({ id, token }, (err, _, body) => {
-      if (err) {
-        logger.error(err, 'provider.drive.download.stats.error')
-        onData(err)
-        return
-      }
+  download ({ id, token }) {
+    return new Promise((resolve, reject) => {
+      this.stats({ id, token }, (err, _, body) => {
+        if (err) {
+          logger.error(err, 'provider.drive.download.stats.error')
+          reject(err)
+          return
+        }
 
-      let requestStream
-      if (adapter.isGsuiteFile(body.mimeType)) {
-        requestStream = this._exportGsuiteFile(id, token, adapter.getGsuiteExportType(body.mimeType))
-      } else {
-        requestStream = this.client
-          .query()
-          .get(`files/${id}`)
-          .qs({ alt: 'media', supportsAllDrives: true })
-          .auth(token)
-          .request()
-      }
+        let requestStream
+        if (adapter.isGsuiteFile(body.mimeType)) {
+          requestStream = this._exportGsuiteFile(id, token, adapter.getGsuiteExportType(body.mimeType))
+        } else {
+          requestStream = this.client
+            .query()
+            .get(`files/${id}`)
+            .qs({ alt: 'media', supportsAllDrives: true })
+            .auth(token)
+            .request()
+        }
 
-      requestStream
-        .on('response', (resp) => {
-          if (resp.statusCode !== 200) {
-            this._waitForFailedResponse(resp)
-              .then((jsonResp) => {
-                resp.body = jsonResp
-                onData(this._error(null, resp))
-              })
-              .catch((err) => onData(this._error(err, resp)))
-          } else {
-            resp.on('data', (chunk) => onData(null, chunk))
-          }
-        })
-        .on('end', () => onData(null, null))
-        .on('error', (err) => {
-          logger.error(err, 'provider.drive.download.error')
-          onData(err)
-        })
+        requestStream
+          .on('error', (err) => {
+            logger.error(err, 'provider.drive.download.error')
+            reject(err)
+          })
+          .on('response', (resp) => {
+            if (resp.statusCode !== 200) {
+              this._waitForFailedResponse(resp)
+                .then((jsonResp) => {
+                  resp.body = jsonResp
+                  reject(this._error(null, resp))
+                })
+                .catch((err) => reject(this._error(err, resp)))
+            } else {
+              resolve(resp)
+            }
+          })
+      })
     })
   }
 

@@ -65,7 +65,14 @@ const get = (req, res) => {
       logger.debug('Waiting for socket connection before beginning remote download.', null, req.id)
       uploader.onSocketReady(() => {
         logger.debug('Socket connection received. Starting remote download.', null, req.id)
-        downloadURL(req.body.url, uploader.handleChunk.bind(uploader), !debug, req.id)
+        downloadURL(req.body.url, !debug, req.id)
+          .then((stream) => {
+            uploader.upload(stream)
+          })
+          .catch((err) => {
+            logger.error(err, 'controller.url.get.error', req.id)
+            return res.status(err.status || 500).json({ message: 'failed to fetch URL' })
+          })
       })
 
       const response = uploader.getResponse()
@@ -110,11 +117,10 @@ const validateURL = (url, debug) => {
  * to the callback chunk by chunk.
  *
  * @param {string} url
- * @param {downloadCallback} onDataChunk
  * @param {boolean} blockLocalIPs
  * @param {string=} traceId
  */
-const downloadURL = (url, onDataChunk, blockLocalIPs, traceId) => {
+const downloadURL = (url, blockLocalIPs, traceId) => {
   const opts = {
     uri: url,
     method: 'GET',
@@ -122,18 +128,19 @@ const downloadURL = (url, onDataChunk, blockLocalIPs, traceId) => {
     agentClass: reqUtil.getProtectedHttpAgent((new URL(url)).protocol, blockLocalIPs)
   }
 
-  request(opts)
-    .on('response', (resp) => {
-      if (resp.statusCode >= 300) {
-        const err = new Error(`URL server responded with status: ${resp.statusCode}`)
-        onDataChunk(err, null)
-      } else {
-        resp.on('data', (chunk) => onDataChunk(null, chunk))
-      }
-    })
-    .on('end', () => onDataChunk(null, null))
-    .on('error', (err) => {
-      logger.error(err, 'controller.url.download.error', traceId)
-      onDataChunk(err, null)
-    })
+  return new Promise((resolve, reject) => {
+    request(opts)
+      .on('error', (err) => {
+        logger.error(err, 'controller.url.download.error', traceId)
+        reject(err)
+      })
+      .on('response', (resp) => {
+        if (resp.statusCode >= 300) {
+          const err = new Error(`URL server responded with status: ${resp.statusCode}`)
+          reject(err)
+        } else {
+          resolve(resp)
+        }
+      })
+  })
 }

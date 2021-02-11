@@ -39,7 +39,7 @@ class Unsplash extends SearchProvider {
     })
   }
 
-  download ({ id, token }, onData) {
+  download ({ id, token }) {
     const reqOpts = {
       url: `${BASE_URL}/photos/${id}`,
       method: 'GET',
@@ -49,28 +49,29 @@ class Unsplash extends SearchProvider {
       }
     }
 
-    request(reqOpts, (err, resp, body) => {
-      if (err || resp.statusCode !== 200) {
-        err = this._error(err, resp)
-        logger.error(err, 'provider.unsplash.download.error')
-        onData(err)
-        return
-      }
+    return new Promise((resolve, reject) => {
+      request(reqOpts, (err, resp, body) => {
+        if (err || resp.statusCode !== 200) {
+          err = this._error(err, resp)
+          logger.error(err, 'provider.unsplash.download.error')
+          reject(err)
+          return
+        }
 
-      const url = body.links.download
-      request.get(url)
-        .on('response', (resp) => {
-          if (resp.statusCode !== 200) {
-            onData(this._error(null, resp))
-          } else {
-            resp.on('data', (chunk) => onData(null, chunk))
-          }
-        })
-        .on('end', () => onData(null, null))
-        .on('error', (err) => {
-          logger.error(err, 'provider.unsplash.download.url.error')
-          onData(err)
-        })
+        const url = body.links.download
+        request.get(url)
+          .on('error', (err) => {
+            logger.error(err, 'provider.unsplash.download.url.error')
+            reject(err)
+          })
+          .on('response', (resp) => {
+            if (resp.statusCode !== 200) {
+              reject(this._error(null, resp))
+            } else {
+              resolve(resp)
+            }
+          })
+      })
     })
   }
 
