@@ -243,12 +243,13 @@ class Uploader {
 
   upload (stream) {
     if (this.uploadStopped) {
+      logger.warn('Upload called on canceled uploader', 'uploader.upload')
       return
     }
 
     stream.on('error', (err) => {
       logger.error(err, 'uploader.download.error', this.shortToken)
-      this.emitError(err)
+      this.emitRetry(err)
       this.cleanUp()
     })
 
@@ -257,16 +258,22 @@ class Uploader {
       case PROTOCOLS.multipart:
         if (!this.multipartStarted && this.options.endpoint) {
           this.uploadMultipart(stream)
+        } else {
+          logger.warn('Upload called twice', 'uploader.download.multipart')
         }
         break
       case PROTOCOLS.s3Multipart:
         if (!this.s3Upload) {
           this.uploadS3Multipart(stream)
+        } else {
+          logger.warn('Upload called twice', 'uploader.download.s3')
         }
         break
       case PROTOCOLS.tus:
         if (!this.tus) {
           this.uploadTus(stream)
+        } else {
+          logger.warn('Upload called twice', 'uploader.download.tus')
         }
         break
     }
@@ -352,6 +359,23 @@ class Uploader {
   }
 
   /**
+   * Added this to filter errors out in get.js
+   * @param {Error} err
+   * @param {object=} extraData
+   */
+  emitRetry (err, extraData = {}) {
+    const serializedErr = serializeError(err)
+    // delete stack to avoid sending server info to client
+    delete serializedErr.stack
+    const dataToEmit = {
+      action: 'retry',
+      payload: Object.assign(extraData, { error: serializedErr })
+    }
+    this.saveState(dataToEmit)
+    emitter().emit(this.token, dataToEmit)
+  }
+
+  /**
    * start the tus upload
    */
   uploadTus (stream) {
@@ -387,7 +411,7 @@ class Uploader {
         delete error.originalRequest
         // @ts-ignore
         delete error.originalResponse
-        this.emitError(error)
+        this.emitRetry(error)
         this.cleanUp()
       },
       /**
@@ -453,7 +477,7 @@ class Uploader {
   _onMultipartComplete (error, response, body, bytesUploaded) {
     if (error) {
       logger.error(error, 'upload.multipart.error')
-      this.emitError(error)
+      this.emitRetry(error)
       return
     }
     const headers = response.headers
@@ -470,11 +494,11 @@ class Uploader {
 
     if (response.statusCode >= 400) {
       logger.error(`upload failed with status: ${response.statusCode}`, 'upload.multipart.error')
-      this.emitError(new Error(response.statusMessage), respObj)
+      this.emitRetry(new Error(response.statusMessage), respObj)
     } else if (bytesUploaded !== this.options.size) {
       const errMsg = `uploaded only ${bytesUploaded} of ${this.options.size} with status: ${response.statusCode}`
       logger.error(errMsg, 'upload.multipart.mismatch.error')
-      this.emitError(new Error(errMsg))
+      this.emitRetry(new Error(errMsg))
     } else {
       this.emitSuccess(null, { response: respObj })
     }
@@ -487,7 +511,7 @@ class Uploader {
    */
   uploadS3Multipart (stream) {
     if (!this.options.s3) {
-      this.emitError(new Error('The S3 client is not configured on this companion instance.'))
+      this.emitRetry(new Error('The S3 client is not configured on this companion instance.'))
       return
     }
 
@@ -510,7 +534,7 @@ class Uploader {
     upload.send((error, data) => {
       this.s3Upload = null
       if (error) {
-        this.emitError(error)
+        this.emitRetry(error)
       } else {
         const url = data && data.Location ? data.Location : null
         this.emitSuccess(url, {
