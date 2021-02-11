@@ -242,6 +242,16 @@ class Uploader {
   }
 
   upload (stream) {
+    if (this.uploadStopped) {
+      return
+    }
+
+    stream.on('error', (err) => {
+      logger.error(err, 'uploader.download.error', this.shortToken)
+      this.emitError(err)
+      this.cleanUp()
+    })
+
     const protocol = this.options.protocol || PROTOCOLS.multipart
     switch (protocol) {
       case PROTOCOLS.multipart:

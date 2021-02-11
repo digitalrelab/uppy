@@ -130,27 +130,13 @@ function get (req, res, next) {
               },
               (err) => {
                 if (isLast) {
-                  throw err
+                  uploader.emitError(err)
+                  uploader.cleanUp()
                 }
 
                 retry(err)
               }
             )
-
-          // provider.download({ id, token, query: req.query }, (err, data) => {
-          //   if (err) {
-          //     if (isLast) {
-          //       // Send error to client if last retry (will be resolved by above handler)
-          //       uploader.handleChunk(err, data)
-          //       return
-          //     }
-          //     // Otherwise clean up and try again
-          //     retry(err)
-          //     return
-          //   }
-
-          //   uploader.handleChunk(err, data)
-          // })
         })
       }
 
