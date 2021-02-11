@@ -287,8 +287,7 @@ class Uploader {
     }
 
     if (this._pushToStream) {
-      this.inputStream.push(chunk)
-      this._pushToStream = false
+      this._pushToStream = this.inputStream.push(chunk)
     } else {
       if (chunk == null) {
         this._downloadComplete = true
@@ -304,7 +303,7 @@ class Uploader {
     }
 
     this.inputStream = new Readable({
-      read: (size) => {
+      read: () => {
         if (this._buffer.length === 0) {
           if (this._downloadComplete) {
             this.inputStream.push(null)
@@ -314,9 +313,8 @@ class Uploader {
           return
         }
 
-        const end = Math.min(size, this._buffer.length)
-        this.inputStream.push(this._buffer.slice(0, end))
-        this._buffer = this._buffer.slice(end)
+        this._pushToStream = this.inputStream.push(this._buffer)
+        this._buffer = Buffer.alloc(0)
       }
     })
     this.fileStream = this.inputStream.pipe(new Transform({
