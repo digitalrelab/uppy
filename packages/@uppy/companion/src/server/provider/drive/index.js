@@ -148,23 +148,23 @@ class Drive extends Provider {
             .request()
         }
 
-        requestStream
-          .on('error', (err) => {
-            logger.error(err, 'provider.drive.download.error')
-            reject(err)
-          })
-          .on('response', (resp) => {
-            if (resp.statusCode !== 200) {
-              this._waitForFailedResponse(resp)
-                .then((jsonResp) => {
-                  resp.body = jsonResp
-                  reject(this._error(null, resp))
-                })
-                .catch((err) => reject(this._error(err, resp)))
-            } else {
-              resolve(resp)
-            }
-          })
+        resolve(requestStream)
+        // .on('error', (err) => {
+        //   logger.error(err, 'provider.drive.download.error')
+        //   reject(err)
+        // })
+        // .on('response', (resp) => {
+        //   if (resp.statusCode !== 200) {
+        //     this._waitForFailedResponse(resp)
+        //       .then((jsonResp) => {
+        //         resp.body = jsonResp
+        //         reject(this._error(null, resp))
+        //       })
+        //       .catch((err) => reject(this._error(err, resp)))
+        //   } else {
+        //     resolve(resp)
+        //   }
+        // })
       })
     })
   }
