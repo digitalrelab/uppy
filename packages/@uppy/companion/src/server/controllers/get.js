@@ -3,7 +3,7 @@ const logger = require('../logger')
 const { errorToResponse } = require('../provider/error')
 const { retryWithDelay } = require('../helpers/utils')
 const emitter = require('../emitter')
-const { Transform } = require('stream')
+const { PassThrough } = require('stream')
 
 const workerCount = process.env.COMPANION_WORKER_COUNT ? parseInt(process.env.COMPANION_WORKER_COUNT, 10) : 3
 
@@ -127,14 +127,7 @@ function get (req, res, next) {
           provider
             .download({ id, token, query: req.query })
             .then((stream) => {
-              console.log('hello world')
-              uploader.upload(stream.pipe(new Transform({
-                transform: (chunk, encoding, callback) => {
-                  console.log(typeof chunk)
-                  console.log(chunk.constructor)
-                  callback(null, chunk)
-                }
-              })))
+              uploader.upload(stream.pipe(new PassThrough({ allowHalfOpen: false })))
             })
             .catch((err) => {
               if (isLast) {
