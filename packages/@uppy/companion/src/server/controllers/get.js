@@ -3,6 +3,7 @@ const logger = require('../logger')
 const { errorToResponse } = require('../provider/error')
 const { retryWithDelay } = require('../helpers/utils')
 const emitter = require('../emitter')
+const { Transform } = require('stream')
 
 const workerCount = process.env.COMPANION_WORKER_COUNT ? parseInt(process.env.COMPANION_WORKER_COUNT, 10) : 3
 
@@ -125,20 +126,25 @@ function get (req, res, next) {
 
           provider
             .download({ id, token, query: req.query })
-            .then(
-              (stream) => {
-                uploader.upload(stream)
-              },
-              (err) => {
-                if (isLast) {
-                  uploader.emitError(err)
-                  uploader.cleanUp()
-                  return
+            .then((stream) => {
+              console.log('hello world')
+              uploader.upload(stream.pipe(new Transform({
+                transform: (chunk, encoding, callback) => {
+                  console.log(typeof chunk)
+                  console.log(chunk.constructor)
+                  callback(null, chunk)
                 }
-
-                retry(err)
+              })))
+            })
+            .catch((err) => {
+              if (isLast) {
+                uploader.emitError(err)
+                uploader.cleanUp()
+                return
               }
-            )
+
+              retry(err)
+            })
         })
       }
 

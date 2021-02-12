@@ -118,8 +118,8 @@ class DropBox extends Provider {
   }
 
   download ({ id, token }) {
-    return new Promise((resolve, reject) => {
-      this.client
+    return new Promise((resolve) => {
+      const request = this.client
         .post('https://content.dropboxapi.com/2/files/download')
         .options({
           version: '2',
@@ -129,17 +129,12 @@ class DropBox extends Provider {
         })
         .auth(token)
         .request()
-        .on('error', (err) => {
-          logger.error(err, 'provider.dropbox.download.error')
-          reject(err)
-        })
-        .on('response', (resp) => {
-          if (resp.statusCode !== 200) {
-            reject(this._error(null, resp))
-          } else {
-            resolve(resp)
-          }
-        })
+        // .on('error', (err) => {
+        //   logger.error(err, 'provider.dropbox.download.error')
+        //   request.destroy(err)
+        // })
+
+      resolve(request)
     })
   }
 

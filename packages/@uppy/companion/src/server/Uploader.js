@@ -382,10 +382,10 @@ class Uploader {
     this.tus = new tus.Upload(stream, {
       endpoint: this.options.endpoint,
       uploadUrl: this.options.uploadUrl,
-      uploadLengthDeferred: true,
-      retryDelays: null,
+      uploadLengthDeferred: false,
+      // retryDelays: null,
       uploadSize: this.options.size,
-      chunkSize: 50 * 1024 * 1024,
+      chunkSize: 25 * 1024 * 1024,
       headers: headerSanitize(this.options.headers),
       addRequestId: true,
       httpStack: new UppyHttpStack(),
@@ -411,6 +411,7 @@ class Uploader {
         delete error.originalRequest
         // @ts-ignore
         delete error.originalResponse
+        stream.destroy()
         this.emitRetry(error)
         this.cleanUp()
       },
