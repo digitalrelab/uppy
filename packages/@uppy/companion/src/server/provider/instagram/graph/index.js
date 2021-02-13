@@ -84,18 +84,7 @@ class Instagram extends Provider {
             return
           }
 
-          request(body.media_url)
-            .on('error', (err) => {
-              logger.error(err, 'provider.instagram.download.url.error')
-              reject(err)
-            })
-            .on('response', (resp) => {
-              if (resp.statusCode !== 200) {
-                reject(this._error(null, resp))
-              } else {
-                resolve(resp)
-              }
-            })
+          resolve(request(body.media_url))
         })
     })
   }

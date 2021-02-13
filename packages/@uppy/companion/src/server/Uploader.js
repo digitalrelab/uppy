@@ -375,6 +375,13 @@ class Uploader {
     emitter().emit(this.token, dataToEmit)
   }
 
+  emitQueued () {
+    emitter().emit(this.token, {
+      action: 'queued',
+      paylaod: {}
+    })
+  }
+
   /**
    * start the tus upload
    */

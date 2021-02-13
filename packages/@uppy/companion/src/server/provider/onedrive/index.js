@@ -67,21 +67,12 @@ class OneDrive extends Provider {
   download ({ id, token, query }) {
     const rootPath = query.driveId ? `/drives/${query.driveId}` : '/me/drive'
     return new Promise((resolve, reject) => {
-      this.client
+      const request = this.client
         .get(`${rootPath}/items/${id}/content`)
         .auth(token)
         .request()
-        .on('error', (err) => {
-          logger.error(err, 'provider.onedrive.download.error')
-          reject(err)
-        })
-        .on('response', (resp) => {
-          if (resp.statusCode !== 200) {
-            reject(this._error(null, resp))
-          } else {
-            resolve(resp)
-          }
-        })
+
+      resolve(request)
     })
   }
 

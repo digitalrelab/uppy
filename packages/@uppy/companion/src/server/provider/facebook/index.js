@@ -88,18 +88,7 @@ class Facebook extends Provider {
             return
           }
 
-          request(this._getMediaUrl(body))
-            .on('error', (err) => {
-              logger.error(err, 'provider.facebook.download.url.error')
-              reject(err)
-            })
-            .on('response', (resp) => {
-              if (resp.statusCode !== 200) {
-                reject(this._error(null, resp))
-              } else {
-                resolve(resp)
-              }
-            })
+          resolve(request(this._getMediaUrl(body)))
         })
     })
   }

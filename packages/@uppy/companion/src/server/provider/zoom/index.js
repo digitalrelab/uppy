@@ -126,21 +126,12 @@ class Zoom extends Provider {
         })
     })
     return downloadUrlPromise.then((downloadUrl) => {
-      return new Promise((resolve, reject) => {
-        this.client
+      return new Promise((resolve) => {
+        const request = this.client
           .get(`${downloadUrl}?access_token=${token}`)
           .request()
-          .on('error', (err) => {
-            logger.error(err, 'provider.zoom.download.error')
-            reject(err)
-          })
-          .on('response', (resp) => {
-            if (resp.statusCode !== 200) {
-              reject(this._error(null, resp))
-            } else {
-              resolve(resp)
-            }
-          })
+
+        resolve(request)
       })
     })
   }

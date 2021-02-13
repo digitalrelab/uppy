@@ -146,10 +146,18 @@ function get (req, res, next) {
       logger.debug('Waiting for socket connection before beginning remote download.', null, req.id)
       // waiting for socketReady.
       uploader.onSocketReady(() => {
+        const queueTimer = setInterval(() => uploader.emitQueued(), 20000)
+        let stoppedTimer = false
         if (token) {
           queue(token, () => retryWithDelay({
             retryDelays: process.env.NODE_ENV === 'test' ? [] : [5000, 10000, 15000, 30000, 60000, 120000],
-            action: getPerformDownload(false),
+            action: () => {
+              if (!stoppedTimer) {
+                clearInterval(queueTimer)
+                stoppedTimer = true
+              }
+              return getPerformDownload(false)()
+            },
             lastAction: getPerformDownload(true)
           }))
         } else {

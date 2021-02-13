@@ -59,18 +59,7 @@ class Unsplash extends SearchProvider {
         }
 
         const url = body.links.download
-        request.get(url)
-          .on('error', (err) => {
-            logger.error(err, 'provider.unsplash.download.url.error')
-            reject(err)
-          })
-          .on('response', (resp) => {
-            if (resp.statusCode !== 200) {
-              reject(this._error(null, resp))
-            } else {
-              resolve(resp)
-            }
-          })
+        resolve(request.get(url))
       })
     })
   }
