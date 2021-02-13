@@ -378,7 +378,7 @@ class Uploader {
   emitQueued () {
     emitter().emit(this.token, {
       action: 'queued',
-      paylaod: {}
+      payload: {}
     })
   }
 
