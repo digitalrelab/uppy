@@ -6,6 +6,7 @@ const purest = require('purest')({ request })
 const logger = require('../../logger')
 const adapter = require('./adapter')
 const { ProviderApiError, ProviderAuthError } = require('../error')
+const { retryWithDelay } = require('../../helpers/utils')
 const DRIVE_FILE_FIELDS = 'kind,id,name,mimeType,ownedByMe,permissions(role,emailAddress),size,modifiedTime,iconLink,thumbnailLink,teamDriveId'
 const DRIVE_FILES_FIELDS = `kind,nextPageToken,incompleteSearch,files(${DRIVE_FILE_FIELDS})`
 // using wildcard to get all 'drive' fields because specifying fields seems no to work for the /drives endpoint
@@ -94,12 +95,27 @@ class Drive extends Provider {
   }
 
   stats ({ id, token }, done) {
-    return this.client
-      .query()
-      .get(`files/${id}`)
-      .qs({ fields: DRIVE_FILE_FIELDS, supportsAllDrives: true })
-      .auth(token)
-      .request(done)
+    retryWithDelay({
+      action: () => new Promise((resolve, reject) => {
+        this.client
+          .query()
+          .get(`files/${id}`)
+          .qs({ fields: DRIVE_FILE_FIELDS, supportsAllDrives: true })
+          .auth(token)
+          .request((err, resp) => {
+            if (err) {
+              reject(err)
+            } else {
+              resolve(resp)
+            }
+          })
+      }),
+      retryDelays: [1000, 5000, 10000, 10000]
+    })
+      .then(
+        (resp) => done(null, resp),
+        (err) => done(err)
+      )
   }
 
   _exportGsuiteFile (id, token, mimeType) {

@@ -5,6 +5,7 @@ const purest = require('purest')({ request })
 const logger = require('../../logger')
 const adapter = require('./adapter')
 const { ProviderApiError, ProviderAuthError } = require('../error')
+const { retryWithDelay } = require('../../helpers/utils')
 
 // From https://www.dropbox.com/developers/reference/json-encoding:
 //
@@ -93,28 +94,49 @@ class DropBox extends Provider {
   }
 
   stats ({ directory, query, token }, done) {
-    if (query.cursor) {
-      this.client
-        .post('files/list_folder/continue')
-        .options({ version: '2' })
-        .auth(token)
-        .json({
-          cursor: query.cursor
-        })
-        .request(done)
-      return
-    }
+    retryWithDelay({
+      action: () => new Promise((resolve, reject) => {
+        if (query.cursor) {
+          this.client
+            .post('files/list_folder/continue')
+            .options({ version: '2' })
+            .auth(token)
+            .json({
+              cursor: query.cursor
+            })
+            .request((err, resp) => {
+              if (err) {
+                reject(err)
+              } else {
+                resolve(resp)
+              }
+            })
+          return
+        }
 
-    this.client
-      .post('files/list_folder')
-      .options({ version: '2' })
-      .qs(query)
-      .auth(token)
-      .json({
-        path: `${directory || ''}`,
-        include_non_downloadable_files: false
-      })
-      .request(done)
+        this.client
+          .post('files/list_folder')
+          .options({ version: '2' })
+          .qs(query)
+          .auth(token)
+          .json({
+            path: `${directory || ''}`,
+            include_non_downloadable_files: false
+          })
+          .request((err, resp) => {
+            if (err) {
+              reject(err)
+            } else {
+              resolve(resp)
+            }
+          })
+      }),
+      retryDelays: [1000, 5000, 10000, 10000]
+    })
+      .then(
+        (resp) => done(null, resp),
+        (err) => done(err)
+      )
   }
 
   download ({ id, token }) {
