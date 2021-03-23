@@ -174,3 +174,54 @@ const retryWithDelay = (options) => {
 }
 
 module.exports.retryWithDelay = retryWithDelay
+
+class TemporaryCache {
+  constructor () {
+    this.entries = {}
+  }
+
+  serialize () {
+    return JSON.stringify(this.entries)
+  }
+
+  /**
+   * @param key
+   * @param value
+   * @param ttl - time to live in ms, default 1 minute
+   */
+  add (key, value, ttl = 60000) {
+    const time = Date.now()
+    for (const entryKey of Object.keys(this.entries)) {
+      const checkEntry = this.entries[entryKey]
+      if (time > checkEntry.exp) {
+        this.delete(entryKey)
+      }
+    }
+
+    this.entries[key] = {
+      exp: Date.now() + ttl,
+      value
+    }
+  }
+
+  get (key) {
+    const entry = this.entries[key]
+
+    if (!entry) {
+      return undefined
+    }
+
+    if (Date.now() > entry.exp) {
+      this.delete(key)
+      return undefined
+    }
+
+    return entry.value
+  }
+
+  delete (key) {
+    delete this.entries[key]
+  }
+}
+
+exports.TemporaryCache = TemporaryCache

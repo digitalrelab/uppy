@@ -6,6 +6,9 @@ const { getURLMeta } = require('../../helpers/request')
 const logger = require('../../logger')
 const adapter = require('./adapter')
 const { ProviderApiError, ProviderAuthError } = require('../error')
+const { TemporaryCache } = require('../../helpers/utils')
+
+const cache = new TemporaryCache()
 
 /**
  * Adapter for API https://developers.facebook.com/docs/graph-api/using-graph-api/
@@ -47,13 +50,31 @@ class Facebook extends Provider {
           return done(err)
         } else {
           this._getUsername(token, (err, username) => {
-            err ? done(err) : done(null, this.adaptData(body, username, directory, query))
+            if (err) {
+              return done(err)
+            }
+
+            const items = adapter.getItemSubList(body)
+            for (const item of items) {
+              if (!item.images || !item.images.length) {
+                continue
+              }
+              const urlKey = `${token}:${adapter.getItemId(item)}:mediaUrl`
+              cache.add(urlKey, this._getMediaUrl(item.images), 5 * 60 * 10000)
+            }
+            done(null, this.adaptData(body, username, directory, query))
           })
         }
       })
   }
 
   _getUsername (token, done) {
+    const key = `${token}:username`
+    const cached = cache.get(key)
+    if (cached) {
+      return done(null, cached)
+    }
+
     this.client
       .get('me')
       .qs({ fields: 'email' })
@@ -64,18 +85,26 @@ class Facebook extends Provider {
           logger.error(err, 'provider.facebook.user.error')
           return done(err)
         } else {
+          cache.add(key, body.email, 5 * 60 * 1000)
           done(null, body.email)
         }
       })
   }
 
-  _getMediaUrl (body) {
-    const sortedImages = adapter.sortImages(body.images)
+  _getMediaUrl (images) {
+    const sortedImages = adapter.sortImages(images)
     return sortedImages[sortedImages.length - 1].source
   }
 
   download ({ id, token }) {
     return new Promise((resolve, reject) => {
+      const key = `${token}:${id}:mediaUrl`
+      const cached = cache.get(key)
+      if (cached) {
+        resolve(request(cached))
+        return
+      }
+
       this.client
         .get(`https://graph.facebook.com/${id}`)
         .qs({ fields: 'images' })
@@ -88,7 +117,9 @@ class Facebook extends Provider {
             return
           }
 
-          resolve(request(this._getMediaUrl(body)))
+          const url = this._getMediaUrl(body.images)
+          cache.add(key, url)
+          resolve(request(url))
         })
     })
   }
@@ -101,6 +132,25 @@ class Facebook extends Provider {
   }
 
   size ({ id, token }, done) {
+    const sizeKey = `${token}:${id}:size`
+    const cachedSize = cache.get(sizeKey)
+    if (cachedSize) {
+      return done(null, cachedSize)
+    }
+
+    const getSize = (url) => getURLMeta(url)
+      .then(({ size }) => done(null, size))
+      .catch((err) => {
+        logger.error(err, 'provider.facebook.size.error')
+        done()
+      })
+
+    const urlKey = `${token}:${id}:mediaUrl`
+    const cachedUrl = cache.get(urlKey)
+    if (cachedUrl) {
+      return getSize(cachedUrl)
+    }
+
     return this.client
       .get(`https://graph.facebook.com/${id}`)
       .qs({ fields: 'images' })
@@ -112,12 +162,7 @@ class Facebook extends Provider {
           return done(err)
         }
 
-        getURLMeta(this._getMediaUrl(body))
-          .then(({ size }) => done(null, size))
-          .catch((err) => {
-            logger.error(err, 'provider.facebook.size.error')
-            done()
-          })
+        return getSize(this._getMediaUrl(body.images))
       })
   }
 
