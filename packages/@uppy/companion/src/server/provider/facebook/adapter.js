@@ -27,6 +27,10 @@ exports.getItemId = (item) => {
   return `${item.id}`
 }
 
+exports.getItemSize = (item) => {
+  return item.size
+}
+
 exports.getItemRequestPath = (item) => {
   return `${item.id}`
 }

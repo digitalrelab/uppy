@@ -55,14 +55,30 @@ class Facebook extends Provider {
             }
 
             const items = adapter.getItemSubList(body)
-            for (const item of items) {
+
+            Promise.all(items.map((item) => {
               if (!item.images || !item.images.length) {
-                continue
+                return
               }
               const urlKey = `${token}:${adapter.getItemId(item)}:mediaUrl`
               cache.add(urlKey, this._getMediaUrl(item.images), 5 * 60 * 10000)
-            }
-            done(null, this.adaptData(body, username, directory, query))
+              return new Promise((resolve, reject) => {
+                if (!item.images || !item.images.length) {
+                  return resolve()
+                }
+                this.size({ id: item.id, token }, (err, size) => {
+                  if (err) {
+                    return reject(err)
+                  }
+
+                  item.size = size
+                  resolve()
+                })
+              })
+            }))
+              .then(() => {
+                done(null, this.adaptData(body, username, directory, query))
+              })
           })
         }
       })
@@ -72,6 +88,7 @@ class Facebook extends Provider {
     const key = `${token}:username`
     const cached = cache.get(key)
     if (cached) {
+      console.log('facebook.username.cached')
       return done(null, cached)
     }
 
@@ -118,7 +135,7 @@ class Facebook extends Provider {
           }
 
           const url = this._getMediaUrl(body.images)
-          cache.add(key, url)
+          cache.add(key, url, 5 * 60 * 1000)
           resolve(request(url))
         })
     })
@@ -189,7 +206,7 @@ class Facebook extends Provider {
         icon: adapter.getItemIcon(item),
         name: adapter.getItemName(item),
         mimeType: adapter.getMimeType(item),
-        size: null,
+        size: adapter.getItemSize(item),
         id: adapter.getItemId(item),
         thumbnail: adapter.getItemThumbnailUrl(item),
         requestPath: adapter.getItemRequestPath(item),

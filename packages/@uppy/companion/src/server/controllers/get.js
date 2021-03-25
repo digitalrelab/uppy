@@ -58,7 +58,7 @@ function get (req, res, next) {
   const provider = req.companion.provider
 
   retryWithDelay({
-    retryDelays: [5000, 10000, 15000, 15000],
+    retryDelays: [5000, 10000, 10000, 15000],
     action: () => new Promise((resolve, reject) => provider.size({ id, token, query: req.query }, (err, size) => {
       if (err) {
         reject(err)
