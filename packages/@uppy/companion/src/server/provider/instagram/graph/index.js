@@ -6,6 +6,9 @@ const { getURLMeta } = require('../../../helpers/request')
 const logger = require('../../../logger')
 const adapter = require('./adapter')
 const { ProviderApiError, ProviderAuthError } = require('../../error')
+const { TemporaryCache } = require('../../../helpers/utils')
+
+const cache = new TemporaryCache()
 
 /**
  * Adapter for API https://developers.facebook.com/docs/instagram-api/overview
@@ -48,13 +51,45 @@ class Instagram extends Provider {
           return done(err)
         } else {
           this._getUsername(token, (err, username) => {
-            err ? done(err) : done(null, this.adaptData(body, username, directory, query))
+            if (err) {
+              return done(err)
+            }
+
+            const items = adapter.getItemSubList(body)
+
+            Promise.all(items.map((item) => {
+              const urlKey = `${token}:${adapter.getItemId(item)}:mediaUrl`
+              cache.add(urlKey, item.media_url, 5 * 60 * 1000)
+
+              return new Promise((resolve, reject) => {
+                this.size({ id: adapter.getItemId(item), token }, (err, size) => {
+                  if (err) {
+                    return reject(err)
+                  }
+
+                  item.size = size
+                  resolve()
+                })
+              })
+            }))
+              .then(() => {
+                done(null, this.adaptData(body, username, directory, query))
+              })
+              .catch((err) => {
+                done(err)
+              })
           })
         }
       })
   }
 
   _getUsername (token, done) {
+    const key = `${token}:username`
+    const cached = cache.get(key)
+    if (cached) {
+      return done(null, cached)
+    }
+
     this.client
       .get('https://graph.instagram.com/me')
       .qs({ fields: 'username' })
@@ -65,6 +100,7 @@ class Instagram extends Provider {
           logger.error(err, 'provider.instagram.user.error')
           return done(err)
         } else {
+          cache.add(key, body.username, 5 * 60 * 1000)
           done(null, body.username)
         }
       })
@@ -72,6 +108,13 @@ class Instagram extends Provider {
 
   download ({ id, token }) {
     return new Promise((resolve, reject) => {
+      const key = `${token}:${id}:mediaUrl`
+      const cached = cache.get(key)
+      if (cached) {
+        resolve(request(cached))
+        return
+      }
+
       this.client
         .get(`https://graph.instagram.com/${id}`)
         .qs({ fields: 'media_url' })
@@ -84,6 +127,7 @@ class Instagram extends Provider {
             return
           }
 
+          cache.add(key, body.media_url, 5 * 60 * 1000)
           resolve(request(body.media_url))
         })
     })
@@ -97,6 +141,28 @@ class Instagram extends Provider {
   }
 
   size ({ id, token }, done) {
+    const sizeKey = `${token}:${id}:size`
+    const cachedSize = cache.get(sizeKey)
+    if (cachedSize) {
+      return done(null, cachedSize)
+    }
+
+    const getSize = (url) => getURLMeta(url)
+      .then(({ size }) => {
+        cache.add(sizeKey, size, 5 * 60 * 1000)
+        done(null, size)
+      })
+      .catch((err) => {
+        logger.error(err, 'provider.instagram.size.error')
+        done()
+      })
+
+    const urlKey = `${token}:${id}:mediaUrl`
+    const cachedUrl = cache.get(urlKey)
+    if (cachedUrl) {
+      return getSize(cachedUrl)
+    }
+
     return this.client
       .get(`https://graph.instagram.com/${id}`)
       .qs({ fields: 'media_url' })
@@ -108,12 +174,8 @@ class Instagram extends Provider {
           return done(err)
         }
 
-        getURLMeta(body.media_url)
-          .then(({ size }) => done(null, size))
-          .catch((err) => {
-            logger.error(err, 'provider.instagram.size.error')
-            done()
-          })
+        cache.add(urlKey, body.media_url, 5 * 60 * 1000)
+        return getSize(body.media_url)
       })
   }
 
@@ -132,7 +194,7 @@ class Instagram extends Provider {
         name: adapter.getItemName(item, i),
         mimeType: adapter.getMimeType(item),
         id: adapter.getItemId(item),
-        size: null,
+        size: adapter.getItemSize(item),
         thumbnail: adapter.getItemThumbnailUrl(item),
         requestPath: adapter.getItemRequestPath(item),
         modifiedDate: adapter.getItemModifiedDate(item)

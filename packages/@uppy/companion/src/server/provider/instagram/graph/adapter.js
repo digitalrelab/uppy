@@ -38,6 +38,8 @@ exports.getMimeType = (item) => {
   return isVideo(item) ? 'video/mp4' : 'image/jpeg'
 }
 
+exports.getItemSize = (item) => item.size
+
 exports.getItemId = (item) => item.id
 
 exports.getItemRequestPath = (item) => item.id

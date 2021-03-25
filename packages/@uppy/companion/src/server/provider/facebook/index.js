@@ -79,6 +79,9 @@ class Facebook extends Provider {
               .then(() => {
                 done(null, this.adaptData(body, username, directory, query))
               })
+              .catch((err) => {
+                done(err)
+              })
           })
         }
       })
@@ -156,7 +159,10 @@ class Facebook extends Provider {
     }
 
     const getSize = (url) => getURLMeta(url)
-      .then(({ size }) => done(null, size))
+      .then(({ size }) => {
+        cache.add(sizeKey, size, 5 * 60 * 1000)
+        done(null, size)
+      })
       .catch((err) => {
         logger.error(err, 'provider.facebook.size.error')
         done()
@@ -179,7 +185,9 @@ class Facebook extends Provider {
           return done(err)
         }
 
-        return getSize(this._getMediaUrl(body.images))
+        const url = this._getMediaUrl(body.images)
+        cache.add(urlKey, url, 5 * 60 * 1000)
+        return getSize(url)
       })
   }
 
